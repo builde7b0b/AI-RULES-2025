@@ -1,0 +1,19 @@
+{
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "cycles": "madge --circular --extensions ts,tsx,js,jsx src",
+    "cycles:graph": "madge --image dep-graph.svg src",
+    "test": "vitest run --reporter=verbose",
+    "test:fast": "vitest -u --run --reporter=verbose",
+    "changelog:check": "node scripts/require-changelog.mjs"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-boundaries": "^4.2.2",
+    "madge": "^6.1.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}
