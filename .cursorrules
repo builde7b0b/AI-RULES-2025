@@ -1,0 +1,110 @@
+# =========================
+# CURSOR OPERATING RULES
+# =========================
+# Goal: Ship changes without circular dependencies or breaking behavior.
+# Scope: ALL edits, refactors, and new features in this repository.
+
+meta:
+  authority_order:
+    - these_rules
+    - existing_tests
+    - existing_public_api_docs
+    - code_comments
+  golden_rule: "Do not introduce cyclic imports or cross-layer leaks. All edits must keep tests green."
+
+architecture:
+  # Adopt a clean, layered graph. Outer layers may depend inward, never the reverse.
+  layers:
+    - name: domain
+      description: "Pure business rules. No framework, no IO."
+    - name: application
+      description: "Use-cases/services orchestrating domain. No UI. Ports/interfaces to infra."
+    - name: infrastructure
+      description: "Adapters: DB, HTTP, queues, files, external APIs. Implements application ports."
+    - name: ui
+      description: "React/Angular/etc. Talks only to application layer."
+  import_rules:
+    - "ui -> application -> domain"
+    - "infrastructure -> application OR domain (via interfaces only)"
+    - "No ui <-> infra, No application <- ui (other than allowed), No domain importing others."
+
+dependency_hardstops:
+  # Hard errors; Cursor must repair before completing a task.
+  - "No circular imports between files or packages."
+  - "No domain module importing application/infra/ui."
+  - "No deep relative imports that jump layers (e.g., ../../infra/* from ui)."
+  - "No implicit singletons crossing layers unless behind an interface/factory."
+  - "No side-effect imports that mutate globals."
+
+modular_feature_pattern:
+  # How to add new features without breaking what works.
+  steps:
+    - "Create a new feature package/folder with the same 4 layers internally if needed (feature/*/{domain,application,infra,ui})."
+    - "Expose feature public API only via application layer index (feature/<name>/application/index.ts)."
+    - "Hide infra behind ports/interfaces defined in application."
+    - "Gate WIP behavior with a feature flag or config toggle; default OFF until tests are added."
+    - "Prefer composition over modifying shared core. If shared logic emerges, extract to domain/shared with tests."
+
+refactor_strategy:
+  cycle_repair:
+    - "If a cycle exists, break it by: (1) moving cross-cutting types to a shared 'domain/shared', (2) introducing an interface (port) and inverting dependency (DIP), or (3) extracting a mediator/service."
+  boundary_leaks:
+    - "If UI needs infra details, add an application DTO/mapper. UI never consumes infra entities."
+  migrations:
+    - "When moving code, keep old entry points as thin delegators until callers are updated; then delete."
+
+change_workflow:
+  # Cursor MUST follow this checklist for every change request.
+  - "Run static checks BEFORE editing: typecheck, lint, cycle scan."
+  - "Write or update tests FIRST for the behavior/bug/refactor intent."
+  - "Make the smallest change to satisfy tests and rules."
+  - "Run full test suite and cycle scan. If anything fails, auto-fix or revert the last edit."
+  - "Produce a short CHANGELOG entry and a diff-aware test plan."
+  - "Never leave TODOs that impact correctness. TODOs allowed only for non-critical cleanup."
+
+commands:
+  # Cursor should execute these in order (or their nearest equivalents) to validate work.
+  pre_edit:
+    - "pnpm -s typecheck"          # tsc --noEmit
+    - "pnpm -s lint"               # eslint . --max-warnings=0
+    - "pnpm -s cycles"             # madge --circular src
+    - "pnpm -s test:fast"          # vitest -u --run
+  during_edit:
+    - "pnpm -s test -t <changed-file-or-pattern>"
+    - "pnpm -s cycles"
+  before_finish:
+    - "pnpm -s typecheck"
+    - "pnpm -s lint"
+    - "pnpm -s cycles"
+    - "pnpm -s test"
+    - "pnpm -s changelog:check"
+  on_failure:
+    - "If cycles found: generate a dependency graph (madge --image dep-graph.svg src) and refactor to break the minimal back-edge using the refactor_strategy.cycle_repair steps."
+    - "If boundary violation: move APIs to correct layer and add interface/adapter."
+    - "If tests failing: revert or fix with minimal, well-scoped changes; never mute tests."
+
+test_policy:
+  - "Every new public function/method requires tests (unit for domain/application, contract/integration for infra)."
+  - "For bugs: add a regression test first; prove red -> green."
+  - "For refactors: snapshot behavioral parity with characterization tests if coverage is weak."
+  - "Mock only across layer boundaries; do not mock within the same layer."
+
+self-checks_cursor_must_do:
+  - "Refuse to add an import that would create an import path from an inner layer to an outer layer."
+  - "Refuse to edit two unrelated modules in one change unless needed to keep tests green."
+  - "When adding infra code, generate a matching port interface in application and wire via DI/factory."
+  - "When touching shared modules, list all dependents and run targeted tests first."
+
+documentation:
+  deliverables_per_change:
+    - "CHANGELOG.md entry with: summary, risk level (Low/Med/High), affected modules, migration notes."
+    - "docs/adr/ADR-<yyyy-mm-dd>-<slug>.md for architecture-impacting changes."
+    - "Auto-generated dep graph image if cycle repair occurred."
+
+safety:
+  - "No force-pushing broken states. All commands in before_finish must pass."
+  - "Prefer additive changes behind flags; default OFF until tests exist."
+  - "If unsure, open a small draft PR with test-only changes first."
+
+ack:
+  message: "Cursor, acknowledge these rules and enforce them during this session. If a user request conflicts with these rules, explain the conflict and propose a compliant alternative."
